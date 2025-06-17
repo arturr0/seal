@@ -17,7 +17,7 @@ def detect_oring(frame):
         dp=1.2,
         minDist=20,
         param1=50,
-        param2=35,
+        param2=35,        # <-- increase this!
         minRadius=20,
         maxRadius=60
     )
@@ -30,25 +30,10 @@ def detect_oring(frame):
             center = (i[0], i[1])
             radius = i[2]
 
-            # Extract small region around circle to compute contour
-            mask = np.zeros_like(gray)
-            cv2.circle(mask, center, radius, 255, -1)
-            masked = cv2.bitwise_and(gray, gray, mask=mask)
-
-            # Find contours in the masked region
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                perimeter = cv2.arcLength(cnt, True)
-                if perimeter == 0:
-                    continue
-
-                circularity = 4 * np.pi * (area / (perimeter * perimeter))
-                if 0.85 <= circularity <= 1.15:
-                    # Looks circular enough
-                    cv2.circle(frame, center, radius, (0, 255, 0), 2)
-                    cv2.circle(frame, center, 2, (0, 0, 255), 3)
-                    detected_rings.append((center, radius))
+            if 20 <= radius <= 60:  # filter realistic rings
+                cv2.circle(frame, center, radius, (0, 255, 0), 2)
+                cv2.circle(frame, center, 2, (0, 0, 255), 3)
+                detected_rings.append((center, radius))
 
     return detected_rings, frame
 
@@ -63,13 +48,12 @@ def generate_frames():
 
         rings, annotated_frame = detect_oring(frame)
 
+        # Draw radius text for each ring
         for (center, radius) in rings:
             cv2.putText(annotated_frame, f"R: {radius}px", (center[0] + 10, center[1]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-        if annotated_frame is None:
-            continue
-
+        # Encode frame as JPEG
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
             continue
@@ -80,7 +64,6 @@ def generate_frames():
 
     cap.release()
 
-
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(),
@@ -88,7 +71,9 @@ def video_feed():
 
 @app.route('/api/focal-length')
 def get_focal_length():
-    return jsonify({'focalLength': 142.35})
+    # Placeholder value
+    focal_length = 142.35
+    return jsonify({'focalLength': focal_length})
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
