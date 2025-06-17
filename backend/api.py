@@ -6,7 +6,28 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
+def detect_oring(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.medianBlur(gray, 5)
 
+    circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50,
+                               param1=50, param2=30, minRadius=10, maxRadius=200)
+
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
+        # Take the first detected circle (or iterate all)
+        for i in circles[0, :1]:
+            center = (i[0], i[1])
+            radius = i[2]
+
+            # Draw the circle and center on the frame
+            cv2.circle(frame, center, radius, (0, 255, 0), 2)
+            cv2.circle(frame, center, 2, (0, 0, 255), 3)
+
+            # Return radius in pixels
+            return radius, frame
+
+    return None, frame
 def generate_frames():
     cap = cv2.VideoCapture(0)
     vp_detector = VPDetector()
@@ -16,38 +37,25 @@ def generate_frames():
         if not ret:
             break
 
-        # Detect vanishing points
-        vps_3d, vps_2d = vp_detector.detect(frame)
+        radius, annotated_frame = detect_oring(frame)
 
-        if vps_2d is not None and len(vps_2d) > 0:
-            principal_point = np.array([frame.shape[1] / 2, frame.shape[0] / 2])
-
-            # Get first vanishing point and reduce to 2D if needed
-            vp_point = np.array(vps_2d[0])
-            if vp_point.shape[0] >= 2:
-                vp_point_2d = vp_point[:2]
-                try:
-                    focal_length = np.linalg.norm(vp_point_2d - principal_point)
-                    # Annotate the frame with focal length
-                    cv2.putText(frame, f"Focal Length: {focal_length:.2f} px", (10, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                except Exception as e:
-                    # Just skip annotation if something unexpected happens
-                    print(f"Warning: failed to calculate focal length: {e}")
-            else:
-                print("Warning: vanishing point does not have enough dimensions")
+        if radius:
+            cv2.putText(annotated_frame, f"Radius: {radius} px", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        else:
+            annotated_frame = frame
 
         # Encode frame as JPEG
-        ret, buffer = cv2.imencode('.jpg', frame)
+        ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
             continue
         frame_bytes = buffer.tobytes()
 
-        # Yield frame in multipart format
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n\r\n')
 
     cap.release()
+
 
 
 @app.route('/video_feed')
