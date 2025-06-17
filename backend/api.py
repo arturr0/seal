@@ -1,47 +1,64 @@
-from flask import Flask, request, jsonify, send_from_directory
 import cv2
 import numpy as np
-import os
+from pyvpd import VPDetector
+from flask import Flask, Response, jsonify
 from flask_cors import CORS
-from waitress import serve
 
-app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
-CORS(app)
-@app.route('/service-worker.js')
-def sw():
-    return send_from_directory(
-        os.path.abspath(os.path.join(__file__, '..', '../frontend/build')),
-        'service-worker.js'
-    )
+app = Flask(__name__)
+CORS(app)  # Enable CORS
+
+def generate_frames():
+    cap = cv2.VideoCapture(0)
+    vp_detector = VPDetector()
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Detect vanishing points
+        vps_3d, vps_2d = vp_detector.detect(frame)
+
+        if vps_2d is not None and len(vps_2d) > 0:
+            principal_point = np.array([frame.shape[1] / 2, frame.shape[0] / 2])
+
+            # Get first vanishing point and reduce to 2D if needed
+            vp_point = np.array(vps_2d[0])
+            if vp_point.shape[0] >= 2:
+                vp_point_2d = vp_point[:2]
+                try:
+                    focal_length = np.linalg.norm(vp_point_2d - principal_point)
+                    # Annotate the frame with focal length
+                    cv2.putText(frame, f"Focal Length: {focal_length:.2f} px", (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                except Exception as e:
+                    # Just skip annotation if something unexpected happens
+                    print(f"Warning: failed to calculate focal length: {e}")
+            else:
+                print("Warning: vanishing point does not have enough dimensions")
+
+        # Encode frame as JPEG
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            continue
+        frame_bytes = buffer.tobytes()
+
+        # Yield frame in multipart format
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n\r\n')
+
+    cap.release()
 
 
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/api/measure', methods=['POST'])
-def measure():
-    file = request.files['image']
-    arr = np.frombuffer(file.read(), np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    c = max(contours, key=cv2.contourArea)
-    (_, _), (MA, ma), angle = cv2.fitEllipse(c)
-    # Assuming 10px = 1mm calibration
-    result = {
-        'major_axis_mm': round(MA * 0.1, 2),
-        'minor_axis_mm': round(ma * 0.1, 2),
-        'angle_deg': round(angle, 2)
-    }
-    return jsonify(result)
-
-# Serve React build
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, 'index.html')
+@app.route('/api/focal-length')
+def get_focal_length():
+    focal_length = 142.35
+    return jsonify({'focalLength': focal_length})
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))  # Default to 5000 if PORT is not set
-    serve(app, host='0.0.0.0', port=port)
+    app.run(debug=True, threaded=True)
