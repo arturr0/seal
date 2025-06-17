@@ -1,0 +1,15 @@
+{
+    "name": "O‑Ring Measure",
+    "short_name": "O‑Ring",
+    "start_url": "/",
+    "display": "standalone",
+    "theme_color": "#000000",
+    "background_color": "#ffffff",
+    "icons": [
+        {
+            "src": "/favicon.ico",
+            "sizes": "64x64",
+            "type": "image/x-icon"
+        }
+    ]
+}
