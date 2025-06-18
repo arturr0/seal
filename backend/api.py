@@ -67,6 +67,15 @@ def home():
 
 @app.route('/process_frame', methods=['POST', 'OPTIONS'])
 def process_frame():
+    if request.method not in ['POST', 'OPTIONS']:
+        response = Response(
+            response="Method Not Allowed",
+            status=405,
+            mimetype='text/plain'
+        )
+        response.headers['Allow'] = 'POST, OPTIONS'
+        return response
+
     if request.method == 'OPTIONS':
         response = Response()
         response.headers.add('Access-Control-Allow-Origin', '*')
