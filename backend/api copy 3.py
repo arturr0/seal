@@ -11,31 +11,21 @@ def detect_oring(frame):
     gray = cv2.medianBlur(gray, 5)
     gray = cv2.equalizeHist(gray)
 
-    circles = None
-    radius_ranges = [(10, 40), (30, 90), (80, 150)]
-
-    for min_r, max_r in radius_ranges:
-        detected = cv2.HoughCircles(
-            gray,
-            cv2.HOUGH_GRADIENT,
-            dp=1.2,
-            minDist=20,
-            param1=50,
-            param2=35,
-            minRadius=min_r,
-            maxRadius=max_r
-        )
-        if detected is not None:
-            detected = np.uint16(np.around(detected))
-            if circles is None:
-                circles = detected
-            else:
-                # Concatenate along axis=1 (number of circles)
-                circles = np.concatenate((circles, detected), axis=1)
+    circles = cv2.HoughCircles(
+        gray,
+        cv2.HOUGH_GRADIENT,
+        dp=1.2,
+        minDist=20,
+        param1=50,
+        param2=35,
+        minRadius=20,
+        maxRadius=60
+    )
 
     detected_rings = []
 
-    if circles is not None and circles.shape[1] > 0:
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
         for i in circles[0, :]:
             center = (i[0], i[1])
             radius = i[2]
@@ -61,7 +51,6 @@ def detect_oring(frame):
                     detected_rings.append((center, radius))
 
     return detected_rings, frame
-
 
 
 def generate_frames():
@@ -97,11 +86,9 @@ def video_feed():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
 @app.route('/api/focal-length')
 def get_focal_length():
     return jsonify({'focalLength': 142.35})
-
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)
