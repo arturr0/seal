@@ -18,7 +18,7 @@ const VideoStream = () => {
     return (
         <div className="video-container">
             <h1>Live Video Stream</h1>
-            <img src="http://localhost:5000/video_feed" alt="Live Video Stream" />
+            <img src="https://seal-80a2.onrender.com/video_feed" alt="Live Video Stream" />
             {focalLength && <p>Focal Length: {focalLength.toFixed(2)} px</p>}
         </div>
     );
