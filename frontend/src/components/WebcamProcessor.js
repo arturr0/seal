@@ -19,73 +19,21 @@ function WebcamProcessor() {
     }, []);
 
     useEffect(() => {
-        let animationFrameId;
-        let lastTimestamp = 0;
-        const frameInterval = 100; // approx 10 fps
+    let animationFrameId;
+    let lastTimestamp = 0;
+    const frameInterval = 100;
 
-        async function processFrame(timestamp) {
-            if (!videoRef.current || !canvasRef.current) return;
+    async function processFrame(timestamp) {
+        // ... (your existing code)
+    }
 
-            if (timestamp - lastTimestamp < frameInterval) {
-                animationFrameId = requestAnimationFrame(processFrame);
-                return;
-            }
-            lastTimestamp = timestamp;
+    animationFrameId = requestAnimationFrame(processFrame);
 
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext("2d");
-
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            canvas.toBlob(async (blob) => {
-                if (!blob) return;
-
-                try {
-                    const formData = new FormData();
-                    formData.append("frame", blob, "frame.jpg");
-
-                    const response = await fetch("http://localhost:5000/process_frame", {
-                        method: "POST",  // Ensure POST is used
-                        body: formData,
-                        headers: {
-                            // Explicitly set headers (optional but helpful)
-                            'Accept': 'image/jpeg',
-                        },
-                        mode: 'cors',  // Ensure CORS mode
-                    });
-
-
-                    if (response.ok) {
-                        const blobProcessed = await response.blob();
-                        const url = URL.createObjectURL(blobProcessed);
-
-                        setProcessedSrc((oldUrl) => {
-                            console.log('Setting processedSrc:', url); // Debug log
-
-                            if (oldUrl) URL.revokeObjectURL(oldUrl);
-                            return url;
-                        });
-                    } else {
-                        console.error("Error processing frame:", response.statusText);
-                    }
-                } catch (err) {
-                    console.error("Fetch error:", err);
-                }
-            }, "image/jpeg");
-
-            animationFrameId = requestAnimationFrame(processFrame);
-        }
-
-        animationFrameId = requestAnimationFrame(processFrame);
-
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-            if (processedSrc) URL.revokeObjectURL(processedSrc);
-        };
-    }, []);
+    return () => {
+        cancelAnimationFrame(animationFrameId);
+        if (processedSrc) URL.revokeObjectURL(processedSrc);
+    };
+}, [processedSrc]); // ✅ Now includes `processedSrc`
 
     return (
         <div>
