@@ -50,7 +50,7 @@ function WebcamProcessor() {
                     const formData = new FormData();
                     formData.append("frame", blob, "frame.jpg");
 
-                    const response = await fetch("http://localhost:5000/process_frame", {
+                    const response = await fetch("https://seal-80a2.onrender.com/process_frame", {
                         method: "POST",
                         body: formData,
                         headers: {
