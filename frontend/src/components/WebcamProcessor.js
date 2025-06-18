@@ -19,25 +19,76 @@ function WebcamProcessor() {
     }, []);
 
     useEffect(() => {
-    let animationFrameId;
-    let lastTimestamp = 0;
-    const frameInterval = 100;
+        let animationFrameId;
+        let lastTimestamp = 0;
+        const frameInterval = 100; // approx 10 fps
 
-    async function processFrame(timestamp) {
-        // ... (your existing code)
-    }
+        async function processFrame(timestamp) {
+            if (!videoRef.current || !canvasRef.current) return;
 
-    animationFrameId = requestAnimationFrame(processFrame);
+            // Calculate time difference since last frame
+            const timeDiff = timestamp - lastTimestamp;
+            
+            if (timeDiff < frameInterval) {
+                animationFrameId = requestAnimationFrame(processFrame);
+                return;
+            }
+            lastTimestamp = timestamp;
 
-    return () => {
-        cancelAnimationFrame(animationFrameId);
-        if (processedSrc) URL.revokeObjectURL(processedSrc);
-    };
-}, [processedSrc]); // ✅ Now includes `processedSrc`
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext("2d");
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(async (blob) => {
+                if (!blob) return;
+
+                try {
+                    const formData = new FormData();
+                    formData.append("frame", blob, "frame.jpg");
+
+                    const response = await fetch("http://localhost:5000/process_frame", {
+                        method: "POST",
+                        body: formData,
+                        headers: {
+                            'Accept': 'image/jpeg',
+                        },
+                        mode: 'cors',
+                    });
+
+                    if (response.ok) {
+                        const blobProcessed = await response.blob();
+                        const url = URL.createObjectURL(blobProcessed);
+
+                        setProcessedSrc((oldUrl) => {
+                            console.log('Setting processedSrc:', url);
+                            if (oldUrl) URL.revokeObjectURL(oldUrl);
+                            return url;
+                        });
+                    } else {
+                        console.error("Error processing frame:", response.statusText);
+                    }
+                } catch (err) {
+                    console.error("Fetch error:", err);
+                }
+            }, "image/jpeg");
+
+            animationFrameId = requestAnimationFrame(processFrame);
+        }
+
+        animationFrameId = requestAnimationFrame(processFrame);
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            if (processedSrc) URL.revokeObjectURL(processedSrc);
+        };
+    }, [processedSrc]); // Added processedSrc to dependencies
 
     return (
         <div>
-            {/* Hidden video and canvas for processing */}
             <video ref={videoRef} style={{ display: "none" }} playsInline />
             <canvas ref={canvasRef} style={{ display: "none" }} />
             {processedSrc ? (
