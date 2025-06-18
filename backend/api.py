@@ -1,11 +1,17 @@
 import os
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify
+from flask import Flask, request, Response
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/process_frame": {
+        "origins": "*",
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+}, supports_credentials=True)
 
 def detect_oring(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -31,79 +37,63 @@ def detect_oring(frame):
             if circles is None:
                 circles = detected
             else:
-                # Concatenate along axis=1 (number of circles)
                 circles = np.concatenate((circles, detected), axis=1)
-
-    detected_rings = []
 
     if circles is not None and circles.shape[1] > 0:
         for i in circles[0, :]:
             center = (i[0], i[1])
             radius = i[2]
 
-            # Extract small region around circle to compute contour
             mask = np.zeros_like(gray)
             cv2.circle(mask, center, radius, 255, -1)
             masked = cv2.bitwise_and(gray, gray, mask=mask)
 
-            # Find contours in the masked region
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
                 perimeter = cv2.arcLength(cnt, True)
                 if perimeter == 0:
                     continue
-
                 circularity = 4 * np.pi * (area / (perimeter * perimeter))
                 if 0.85 <= circularity <= 1.15:
-                    # Looks circular enough
                     cv2.circle(frame, center, radius, (0, 255, 0), 2)
                     cv2.circle(frame, center, 2, (0, 0, 255), 3)
-                    detected_rings.append((center, radius))
 
-    return detected_rings, frame
-
+    return frame
 
 
-def generate_frames():
-    cap = cv2.VideoCapture(0)
+@app.route('/process_frame', methods=['POST', 'OPTIONS'])  # Remove GET
+def process_frame():
+    if request.method == 'OPTIONS':
+        # Handle CORS preflight
+        response = Response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    if 'frame' not in request.files:
+        return 'No frame received', 400
 
-        rings, annotated_frame = detect_oring(frame)
+    file = request.files['frame']
+    try:
+        img_bytes = file.read()
+        img_array = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
-        for (center, radius) in rings:
-            cv2.putText(annotated_frame, f"R: {radius}px", (center[0] + 10, center[1]),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        if frame is None:
+            return 'Failed to decode image', 400
 
-        if annotated_frame is None:
-            continue
+        processed_frame = detect_oring(frame)
+        _, buffer = cv2.imencode('.jpg', processed_frame)
 
-        ret, buffer = cv2.imencode('.jpg', annotated_frame)
-        if not ret:
-            continue
+        response = Response(buffer.tobytes(), mimetype='image/jpeg')
+        response.headers.add('Access-Control-Allow-Origin', '*')  # Ensure CORS
+        return response
 
-        frame_bytes = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n\r\n')
-
-    cap.release()
-
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
-@app.route('/api/focal-length')
-def get_focal_length():
-    return jsonify({'focalLength': 142.35})
-
-
+    except Exception as e:
+        print("Error:", e)
+        return 'Internal server error', 500
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True, threaded=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
