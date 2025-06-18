@@ -5,43 +5,45 @@ import './VideoStream.css';
 const VideoStream = () => {
     const [focalLength, setFocalLength] = useState(null);
     const [processedImage, setProcessedImage] = useState(null);
+    const [error, setError] = useState(null); // Added error state
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
 
-   const captureAndProcessFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    const captureAndProcessFrame = async () => {
+        if (!videoRef.current || !canvasRef.current) return;
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-    canvas.toBlob(async (blob) => {
-        const formData = new FormData();
-        formData.append('frame', blob, 'frame.jpg');
+        canvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append('frame', blob, 'frame.jpg');
 
-        try {
-            const response = await fetch('https://seal-80a2.onrender.com/process_frame', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'image/jpeg'
+            try {
+                const response = await fetch('https://seal-80a2.onrender.com/process_frame', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'image/jpeg'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-            });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const responseBlob = await response.blob();
+                setProcessedImage(URL.createObjectURL(responseBlob));
+                setError(null); // Clear any previous errors
+            } catch (error) {
+                console.error('Error processing frame:', error);
+                setError('Failed to process frame');
             }
-
-            const blob = await response.blob();
-            setProcessedImage(URL.createObjectURL(blob));
-        } catch (error) {
-            console.error('Error processing frame:', error);
-            setError('Failed to process frame');
-        }
-    }, 'image/jpeg', 0.95);  // 0.95 = quality
-};
+        }, 'image/jpeg', 0.95);  // 0.95 = quality
+    };
 
     useEffect(() => {
         // Setup camera stream
@@ -58,13 +60,19 @@ const VideoStream = () => {
 
                 return () => clearInterval(interval);
             })
-            .catch(console.error);
+            .catch(error => {
+                console.error('Error accessing camera:', error);
+                setError('Could not access camera');
+            });
 
     }, []);
 
     return (
         <div className="video-container">
             <h1>Live Video Stream</h1>
+            
+            {/* Error message display */}
+            {error && <div className="error-message">{error}</div>}
             
             {/* Hidden video and canvas elements */}
             <video ref={videoRef} style={{display: 'none'}} playsInline />
